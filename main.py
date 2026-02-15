@@ -23,9 +23,7 @@ class SentinelCore:
         self.price_cache: Dict[str, dict] = {}
         self.news_cache: List[dict] = []
         self.ws_clients: List[WebSocket] = []
-        
-    async def init(self):
-        """Inicializa"""
+ """Inicializa"""
         self.scheduler.start()
         self.scheduler.add_job(self._update_prices, "interval", seconds=5)
         asyncio.create_task(self._update_prices())
@@ -189,3 +187,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=PORT)
+
