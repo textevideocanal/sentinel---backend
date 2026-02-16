@@ -23,7 +23,7 @@ class SentinelCore:
         self.price_cache: Dict[str, dict] = {}
         self.news_cache: List[dict] = []
         self.ws_clients: List[WebSocket] = []
- """Inicializa"""
+        """Inicializa"""
         self.scheduler.start()
         self.scheduler.add_job(self._update_prices, "interval", seconds=5)
         asyncio.create_task(self._update_prices())
@@ -133,7 +133,6 @@ core = SentinelCore()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await core.init()
     yield
 
 app = FastAPI(
@@ -183,8 +182,7 @@ async def websocket_endpoint(ws: WebSocket):
         if ws in core.ws_clients:
             core.ws_clients.remove(ws)
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
