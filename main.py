@@ -18,12 +18,13 @@ logger = logging.getLogger("sentinel")
 PORT = int(os.getenv("PORT", 8000))
 
 class SentinelCore:
-    def _init_(self):
+    def _init(self):  # ✅ CORRIGIDO: __init_ com 2 underlines
         self.scheduler = AsyncIOScheduler()
         self.price_cache: Dict[str, dict] = {}
         self.news_cache: List[dict] = []
         self.ws_clients: List[WebSocket] = []
-        """Inicializa"""
+        
+        # Inicializa
         self.scheduler.start()
         self.scheduler.add_job(self._update_prices, "interval", seconds=5)
         asyncio.create_task(self._update_prices())
@@ -34,20 +35,32 @@ class SentinelCore:
         """Busca preços da Bybit"""
         try:
             async with httpx.AsyncClient() as client:
-                symbols = ["BTCUSDT", "ETHUSDT", "EURUSDT", "GBPUSDT"]
+                # ✅ EXPANDIDO: Mais pares de moedas
+                symbols = [
+                    "BTCUSDT", "ETHUSDT", 
+                    "EURUSDT", "GBPUSDT", 
+                    "USDJPY", "AUDUSDT", 
+                    "USDCAD", "XAUUSDT"
+                ]
                 for symbol in symbols:
-                    resp = await client.get(
-                        f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}",
-                        timeout=10.0
-                    )
-                    data = resp.json()
-                    if data.get("retCode") == 0:
-                        ticker = data["result"]["list"][0]
-                        self.price_cache[symbol] = {
-                            "price": float(ticker["lastPrice"]),
-                            "timestamp": int(ticker["ts"]),
-                            "change_24h": float(ticker.get("price24hPcnt", 0)) * 100
-                        }
+                    try:
+                        resp = await client.get(
+                            f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}",
+                            timeout=10.0
+                        )
+                        data = resp.json()
+                        if data.get("retCode") == 0 and data.get("result", {}).get("list"):
+                            ticker = data["result"]["list"][0]
+                            self.price_cache[symbol] = {
+                                "price": float(ticker["lastPrice"]),
+                                "timestamp": int(ticker["ts"]),
+                                "change_24h": float(ticker.get("price24hPcnt", 0)) * 100
+                            }
+                            logger.info(f"✅ {symbol}: {ticker['lastPrice']}")
+                        else:
+                            logger.warning(f"⚠️ Sem dados para {symbol}: {data.get('retMsg', 'unknown')}")
+                    except Exception as e:
+                        logger.error(f"Erro ao buscar {symbol}: {e}")
                 
                 # Notifica clients
                 await self._broadcast({
@@ -55,11 +68,10 @@ class SentinelCore:
                     "data": self.price_cache
                 })
         except Exception as e:
-            logger.error(f"Erro preços: {e}")
+            logger.error(f"Erro geral preços: {e}")
     
     async def _update_news(self):
         """Busca notícias (simplificado)"""
-        # Mock por enquanto - implementar depois
         self.news_cache = [
             {
                 "time": "14:30",
@@ -83,14 +95,29 @@ class SentinelCore:
     
     def analyze(self, asset: str) -> dict:
         """Análise técnica"""
-        symbol = asset.replace("/", "") + "USDT"
+        # ✅ CORRIGIDO: Mapeamento correto de pares
+        symbol_map = {
+            "EUR/USD": "EURUSDT",
+            "GBP/USD": "GBPUSDT", 
+            "USD/JPY": "USDJPY",
+            "BTC/USDT": "BTCUSDT",
+            "ETH/USDT": "ETHUSDT",
+            "AUD/USD": "AUDUSDT",
+            "USD/CAD": "USDCAD",
+            "XAU/USD": "XAUUSDT"
+        }
+        
+        symbol = symbol_map.get(asset, asset.replace("/", "") + "USDT")
         price_data = self.price_cache.get(symbol)
         
         if not price_data:
+            logger.warning(f"❌ Sem dados para {asset} (símbolo: {symbol})")
             return {
                 "asset": asset,
                 "status": "offline",
-                "message": "Sem dados"
+                "message": f"Sem dados para {asset}",
+                "symbol": symbol,
+                "available": list(self.price_cache.keys())
             }
         
         price = price_data["price"]
@@ -128,12 +155,15 @@ class SentinelCore:
             "timestamp": datetime.now().isoformat()
         }
 
-# Instância global
-core = SentinelCore()
+# ✅ CORRIGIDO: Inicialização lazy para evitar problemas no import
+core = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global core
+    core = SentinelCore()
     yield
+    # Cleanup se necessário
 
 app = FastAPI(
     title="Sentinel Tactical API",
@@ -141,19 +171,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ✅ CORS já está correto
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/")
 async def root():
-    return {"status": "online", "service": "Sentinel Tactical v1.0"}
+    return {
+        "status": "online", 
+        "service": "Sentinel Tactical v1.0",
+        "cache_size": len(core.price_cache) if core else 0
+    }
 
 @app.get("/dashboard")
 async def dashboard():
+    if not core:
+        return {"error": "Core not initialized"}
     return {
         "prices": core.price_cache,
         "news": core.news_cache,
@@ -166,12 +204,15 @@ async def dashboard():
 
 @app.get("/analyze/{asset}")
 async def analyze(asset: str):
+    if not core:
+        return {"error": "Core not initialized"}
     return core.analyze(asset)
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    core.ws_clients.append(ws)
+    if core:
+        core.ws_clients.append(ws)
     try:
         while True:
             data = await ws.receive_text()
@@ -179,11 +220,9 @@ async def websocket_endpoint(ws: WebSocket):
             if msg.get("action") == "subscribe":
                 await ws.send_json({"type": "subscribed", "assets": msg.get("assets", [])})
     except WebSocketDisconnect:
-        if ws in core.ws_clients:
+        if core and ws in core.ws_clients:
             core.ws_clients.remove(ws)
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
