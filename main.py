@@ -1,4 +1,3 @@
-# Deploy v2.1 - Forçando atualização
 import os
 import json
 import logging
@@ -9,20 +8,20 @@ import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-# Configuração básica
+# Configuração
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sentinel")
 
 PORT = int(os.getenv("PORT", 8000))
 
-# Cache simples em memória
+# Cache simples
 price_cache: Dict[str, dict] = {}
 ws_clients: List[WebSocket] = []
 
 # Cria app
-app = FastAPI(title="Sentinel Tactical API", version="1.0.0")
+app = FastAPI(title="Sentinel Tactical API", version="2.0")
 
-# CORS liberado para todas as origens
+# CORS liberado
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,120 +32,33 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
+    logger.info("Rota / acessada")
     return {
         "status": "online",
-        "service": "Sentinel Tactical v1.0",
+        "service": "Sentinel Tactical v2.0",
         "timestamp": datetime.now().isoformat()
     }
 
+@app.get("/test")
+async def test():
+    logger.info("Rota /test acessada")
+    return {"message": "Teste OK"}
+
 @app.get("/analyze/{asset}")
 async def analyze(asset: str):
-    """Análise técnica simplificada"""
-    
-    # Mapeamento de pares
-    symbol_map = {
-        "EUR/USD": "EURUSDT",
-        "GBP/USD": "GBPUSDT", 
-        "USD/JPY": "USDJPY",
-        "BTC/USDT": "BTCUSDT",
-        "ETH/USDT": "ETHUSDT",
-        "AUD/USD": "AUDUSDT",
-        "USD/CAD": "USDCAD",
-        "XAU/USD": "XAUUSDT"
-    }
-    
-    symbol = symbol_map.get(asset, asset.replace("/", "") + "USDT")
-    
-    # Busca preço em tempo real
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"https://api.bybit.com/v5/market/tickers?category=spot&symbol={symbol}",
-                timeout=10.0
-            )
-            data = resp.json()
-            
-            if data.get("retCode") == 0 and data.get("result", {}).get("list"):
-                ticker = data["result"]["list"][0]
-                price = float(ticker["lastPrice"])
-                change = float(ticker.get("price24hPcnt", 0)) * 100
-                
-                # RSI simplificado
-                rsi = 50 - (change * 2)
-                rsi = max(0, min(100, rsi))
-                
-                # Determina tier
-                confluences = 0
-                if rsi < 30 or rsi > 70:
-                    confluences += 1
-                if abs(change) > 1:
-                    confluences += 1
-                
-                if confluences >= 2:
-                    tier = "FORTE"
-                    signal = {
-                        "direction": "CALL" if rsi < 50 else "PUT",
-                        "entry": price,
-                        "expiration": 5
-                    }
-                elif confluences == 1:
-                    tier = "MODERADO"
-                    signal = None
-                else:
-                    tier = "FRACO"
-                    signal = None
-                
-                return {
-                    "asset": asset,
-                    "price": price,
-                    "tier": tier,
-                    "indicators": {
-                        "rsi": round(rsi, 1),
-                        "change_24h": round(change, 2)
-                    },
-                    "signal": signal,
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                return {
-                    "asset": asset,
-                    "status": "error",
-                    "message": f"API retornou erro: {data.get('retMsg', 'desconhecido')}",
-                    "symbol": symbol
-                }
-                
-    except Exception as e:
-        logger.error(f"Erro ao analisar {asset}: {e}")
-        return {
-            "asset": asset,
-            "status": "error",
-            "message": str(e),
-            "symbol": symbol
-        }
-
-@app.get("/dashboard")
-async def dashboard():
+    logger.info(f"Analisando: {asset}")
     return {
-        "status": "online",
-        "message": "Dashboard endpoint working"
+        "asset": asset,
+        "status": "test",
+        "message": "Rota funcionando",
+        "timestamp": datetime.now().isoformat()
     }
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    await ws.accept()
-    ws_clients.append(ws)
-    try:
-        while True:
-            data = await ws.receive_text()
-            msg = json.loads(data)
-            if msg.get("action") == "subscribe":
-                await ws.send_json({"type": "subscribed"})
-    except WebSocketDisconnect:
-        if ws in ws_clients:
-            ws_clients.remove(ws)
+# Log ao iniciar
+logger.info("=== Sentinel API Iniciando ===")
+logger.info(f"Rotas registradas: {['/']}")
 
 if __name__ == "__main__":
     import uvicorn
+    logger.info("Iniciando uvicorn...")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
-
-
