@@ -1,4 +1,4 @@
-if _name_ == "_main_":
+if __name__ == "__main__":
     import uvicorn
     
     # Pega a porta do Render ou usa 10000 como padrão
@@ -6,3 +6,4 @@ if _name_ == "_main_":
     
     logger.info(f"Iniciando uvicorn na porta {port}...")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
