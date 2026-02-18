@@ -40,19 +40,18 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.get("/analyze/{asset}")
-async def analyze(asset: str):
-    logger.info(f"Analisando: {asset}")
-    
+@app.get("/analyze/{symbol}")
+async def analyze(symbol: str):
+    # Mapeamento de pares (agora sem barra na URL)
     symbol_map = {
-        "EUR/USD": "EURUSDT",
-        "GBP/USD": "GBPUSDT", 
-        "USD/JPY": "USDJPY",
-        "BTC/USDT": "BTCUSDT",
-        "ETH/USDT": "ETHUSDT",
-        "AUD/USD": "AUDUSDT",
-        "USD/CAD": "USDCAD",
-        "XAU/USD": "XAUUSDT"
+        "EURUSD": "EURUSDT",
+        "GBPUSD": "GBPUSDT", 
+        "USDJPY": "USDJPY",
+        "BTCUSDT": "BTCUSDT",
+        "ETHUSDT": "ETHUSDT",
+        "AUDUSD": "AUDUSDT",
+        "USDCAD": "USDCAD",
+        "XAUUSD": "XAUUSDT"
     }
     
     symbol = symbol_map.get(asset, asset.replace("/", "") + "USDT")
@@ -108,3 +107,4 @@ async def analyze(asset: str):
 logger.info("=== Sentinel API Iniciando ===")
 logger.info(f"Porta: {PORT}")
 uvicorn.run(app, host="0.0.0.0", port=PORT)
+
